@@ -1,0 +1,103 @@
+package com.example.emailverifier.utils;
+
+import com.example.emailverifier.configuration.EmailCredentials;
+import com.example.emailverifier.model.vo.EmailVO;
+import com.sun.mail.imap.IMAPStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import javax.mail.*;
+import javax.mail.internet.InternetAddress;
+import javax.mail.search.FlagTerm;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
+
+@Service
+public class EmailVerifierUtil {
+
+    private final Logger logger = LoggerFactory.getLogger(this.getClass());
+
+    private static final String FOLDER_INBOX = "INBOX";
+    private static final String HOST = "outlook.office365.com";
+    private static final int PORT = 993;
+    private static final String IMAP_PROTOCOL = "imaps";
+
+    private EmailCredentials emailCredentials;
+    private IMAPStore imapStore;
+
+    @Autowired
+    public EmailVerifierUtil(EmailCredentials emailCredentials) {
+        this.emailCredentials = emailCredentials;
+    }
+
+    public List<EmailVO> getNewMessages() throws MessagingException, IOException {
+        logger.info("Verifying new messages inbox...");
+        try {
+            Folder folderImap = connectEmail(FOLDER_INBOX);
+            List<EmailVO> emailVOS = readMessagesFromFolder(folderImap);
+            logger.info("Success on verifying new messages inbox!");
+            return emailVOS;
+        } catch (MessagingException | IOException exception) {
+            logger.error("Error on verifying new messages: " + exception.getMessage());
+            throw exception;
+        }
+    }
+
+    private Folder connectEmail(String folderName) throws MessagingException {
+        Session emailSession = Session.getDefaultInstance(new Properties());
+
+        imapStore = (IMAPStore) emailSession.getStore(IMAP_PROTOCOL);
+        imapStore.connect(HOST, PORT, emailCredentials.getUsername(), emailCredentials.getPassword());
+        Folder inbox = imapStore.getFolder(folderName);
+
+        if (inbox != null) inbox.open(Folder.READ_WRITE);
+
+        return inbox;
+    }
+
+    private List<EmailVO> readMessagesFromFolder(Folder folder) throws MessagingException, IOException {
+        if (folder == null) {
+            logger.info("No folder found.");
+            return null;
+        }
+
+        Message[] messages = getUnseenMessages(folder);
+
+        if (messages.length == 0) logger.info("No messages found.");
+
+        List<EmailVO> emails = new ArrayList<>();
+        for (Message message : messages) {
+            Address[] from = message.getFrom();
+
+            emails.add(EmailVO.builder()
+                    .from(((InternetAddress) from[0]).getAddress())
+                    .subject(message.getSubject())
+                    .content(message.getContent().toString())
+                    .build());
+
+            message.setFlag(Flags.Flag.SEEN, true);
+        }
+
+        folder.close(false);
+        closeImapStore();
+
+        return emails;
+    }
+
+    private Message[] getUnseenMessages(Folder folder) throws MessagingException {
+        Flags seen = new Flags(Flags.Flag.SEEN);
+        FlagTerm unseenFlagTerm = new FlagTerm(seen, false);
+        Message[] messages = folder.search(unseenFlagTerm);
+        return messages;
+    }
+
+    private void closeImapStore() throws MessagingException {
+        if (imapStore != null) {
+            imapStore.close();
+        }
+    }
+}
