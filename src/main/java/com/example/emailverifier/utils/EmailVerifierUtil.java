@@ -36,22 +36,30 @@ public class EmailVerifierUtil {
 
     public List<EmailVO> getNewMessages() throws MessagingException, IOException {
         logger.info("Verifying new messages inbox...");
+        Folder inbox = null;
         try {
-            Folder folderImap = connectEmail(FOLDER_INBOX);
-            List<EmailVO> emailVOS = readMessagesFromFolder(folderImap);
+            connectEmail();
+            inbox = getFolder(FOLDER_INBOX);
+            List<EmailVO> emailVOS = readMessagesFromFolder(inbox);
             logger.info("Success on verifying new messages inbox!");
             return emailVOS;
         } catch (MessagingException | IOException exception) {
             logger.error("Error on verifying new messages: " + exception.getMessage());
             throw exception;
+        } finally {
+            closeFolder(inbox);
+            closeImapStore();
         }
     }
 
-    private Folder connectEmail(String folderName) throws MessagingException {
+    private void connectEmail() throws MessagingException {
         Session emailSession = Session.getDefaultInstance(new Properties());
 
         imapStore = (IMAPStore) emailSession.getStore(IMAP_PROTOCOL);
         imapStore.connect(HOST, PORT, emailCredentials.getUsername(), emailCredentials.getPassword());
+    }
+
+    private Folder getFolder(String folderName) throws MessagingException {
         Folder inbox = imapStore.getFolder(folderName);
 
         if (inbox != null) inbox.open(Folder.READ_WRITE);
@@ -82,9 +90,6 @@ public class EmailVerifierUtil {
             message.setFlag(Flags.Flag.SEEN, true);
         }
 
-        folder.close(false);
-        closeImapStore();
-
         return emails;
     }
 
@@ -93,6 +98,10 @@ public class EmailVerifierUtil {
         FlagTerm unseenFlagTerm = new FlagTerm(seen, false);
         Message[] messages = folder.search(unseenFlagTerm);
         return messages;
+    }
+
+    private void closeFolder(Folder inbox) throws MessagingException {
+        inbox.close(false);
     }
 
     private void closeImapStore() throws MessagingException {
