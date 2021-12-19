@@ -11,5 +11,6 @@ public class EmailCredentials {
 
     private String username;
     private String password;
+    private String subject;
 
 }

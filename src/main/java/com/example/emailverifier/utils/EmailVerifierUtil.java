@@ -10,7 +10,9 @@ import org.springframework.stereotype.Service;
 
 import javax.mail.*;
 import javax.mail.internet.InternetAddress;
+import javax.mail.search.AndTerm;
 import javax.mail.search.FlagTerm;
+import javax.mail.search.SearchTerm;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -96,12 +98,29 @@ public class EmailVerifierUtil {
     private Message[] getUnseenMessages(Folder folder) throws MessagingException {
         Flags seen = new Flags(Flags.Flag.SEEN);
         FlagTerm unseenFlagTerm = new FlagTerm(seen, false);
-        Message[] messages = folder.search(unseenFlagTerm);
+
+        SearchTerm subjectSearchTerm = new SearchTerm() {
+            @Override
+            public boolean match(Message message) {
+                try {
+                    return message.getSubject().toLowerCase().contains(emailCredentials.getSubject().toLowerCase());
+                } catch (MessagingException ex) {
+                    ex.printStackTrace();
+                }
+                return false;
+            }
+        };
+
+        final SearchTerm[] filters = { unseenFlagTerm, subjectSearchTerm };
+        final SearchTerm searchTerm = new AndTerm(filters);
+        Message[] messages = folder.search(searchTerm);
         return messages;
     }
 
     private void closeFolder(Folder inbox) throws MessagingException {
-        inbox.close(false);
+        if (inbox != null) {
+            inbox.close(false);
+        }
     }
 
     private void closeImapStore() throws MessagingException {
